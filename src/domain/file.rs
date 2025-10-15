@@ -2,9 +2,9 @@ use serde::{ Serialize, Deserialize };
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct File {
-    id: u64,
-    name: String,
-    location: String,
-    f_type: String,
+    pub id: u64,
+    pub name: String,
+    pub location: String,
+    pub f_type: String,
 }
 
