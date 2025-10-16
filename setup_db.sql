@@ -4,8 +4,9 @@ USE fm_staging;
 DROP TABLE IF EXISTS files;
 CREATE TABLE IF NOT EXISTS files (
 	id BIGINT UNSIGNED PRIMARY KEY NOT NULL,
-	file_name varchar(200) NOT NULL,
-	file_location varchar(200) NOT NULL
+	name varchar(200) NOT NULL,
+	location varchar(200) NOT NULL,
+	f_type varchar(200) NOT NULL
 );
 
 TRUNCATE TABLE files;
@@ -18,9 +19,9 @@ BEGIN
 	SELECT COUNT(*) INTO row_count FROM files;
 
 	IF row_count = 0 THEN	
-		INSERT INTO files (id, file_name, file_location) VALUES
-		(1, 'file.txt', '/data/fm_files/file.txt'),
-		(2, 'users.json', '/data/fm_files/users.json');
+		INSERT INTO files (id, name, location, f_type) VALUES
+		(1, 'file.txt', '/data/fm_files/file.txt', 'txt'),
+		(2, 'users.json', '/data/fm_files/users.json', 'json');
 	END IF;
 END $$
 

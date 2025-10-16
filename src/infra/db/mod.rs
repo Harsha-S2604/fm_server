@@ -1,8 +1,21 @@
-use mysql::*;
-use mysql::prelude::*;
 use std::env;
 
-pub fn setup_db() -> Result <Pool, &'static str> {
+use sqlx::mysql::MySqlPoolOptions;
+use sqlx::MySqlPool;
+
+pub struct AppState {
+    db: MySqlPool,
+}
+
+impl AppState {
+    pub fn new(db: MySqlPool) -> Self {
+        Self {
+            db
+        }
+    }
+}
+
+pub async fn setup_db() -> Result <MySqlPool, &'static str> {
     let mut db_url = String::from("mysql://");
     
     if let Ok(mysql_user) = env::var("MYSQL_USER") {
@@ -35,12 +48,14 @@ pub fn setup_db() -> Result <Pool, &'static str> {
         return Err("Please set FM_STAGING_DB in your environment");
     }
 
-    let pool_result = Pool::new(db_url.as_str());
-    let mut pool: Pool;
+    let pool_result = MySqlPoolOptions::new()
+                        .max_connections(5)
+                        .connect(db_url.as_str()).await;
 
+    let mut pool;
     match pool_result {
         Ok(p) => {
-            pool = p;        
+            pool = p;
         },
         Err(e) => {
             eprintln!("Failed to create the pool {:#?}", e);

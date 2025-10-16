@@ -8,7 +8,7 @@ fi
 echo "SETTING UP DATABASE WITH SAMPLE DATA..."
 
 MYSQL_FILE="$HOME/Nebulon/projects/fm_server/setup_db.sql"
-mariadb -u $MYSQL_USER -p$MYSQL_PASSWD < $MYSQL_FILE
+sudo mariadb -u $MYSQL_USER -p$MYSQL_PASSWD < $MYSQL_FILE
 
 if [ $? -eq 0 ]; then
 		echo "DONE"
