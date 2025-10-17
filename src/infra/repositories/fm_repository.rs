@@ -1,18 +1,34 @@
-use crate::domain::file::{
-    File,
-};
+use crate::domain::file::File;
 
-pub fn get_files() -> Result<Vec<File>, String> {
+use std::sync::Arc;
+use sqlx::MySqlPool;
+
+pub async fn get_files(
+    limit: u8,
+    offset: u64, 
+    db_mut: &Arc<MySqlPool>
+) -> Result<Vec<File>, &'static str> {
     let file = File {
         id: 123,
         name: String::from("file_1"),
         f_type: String::from("txt"),
         location: String::from("/home/user1/file.txt"),
     };
+    
+    let db = Arc::clone(db_mut);
+    let files_result = sqlx::query_as!(
+        File,
+        r#"SELECT * FROM files ORDER BY id LIMIT ? OFFSET ?"#,
+        limit,
+        offset 
+    ).fetch_all(&(*db)).await
+    .map_err(|e| {
+        eprintln!("(get_files QUERY_ERROR)::{:#?}", e);
+        "Database error"
+    });
 
-    let files = vec![file];
+    files_result
 
-    Ok(files)
 }
 
 pub fn get_file() -> Result<File, String> {

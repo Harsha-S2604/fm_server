@@ -6,14 +6,13 @@ mod domain;
 
 use axum::{ Router, Extension };
 use infra::db;
-use domain::file::File;
-use std::sync::{ Arc, Mutex };
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
     let pool_result = db::setup_db().await;
 
-    let mut db_pool;
+    let db_pool;
     match pool_result {
         Ok(pool) => {
             db_pool = pool;
@@ -24,8 +23,8 @@ async fn main() {
         }
     }
 
-    let app_state = db::AppState::new(db_pool.clone());
-    let app_state = Arc::new(Mutex::new(app_state));
+    let db_mutex = Arc::new(db_pool.clone());
+    let app_state = db::AppState::new(db_mutex);
 
     let api_routes = routes::register_routes();
     let app_routes = Router::new()

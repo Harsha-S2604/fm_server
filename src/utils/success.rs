@@ -1,10 +1,4 @@
-use axum::{
- http::StatusCode,
-};
-
-use serde::{
-    Serialize,
-};
+use serde::Serialize;
 
 #[derive(Debug, Serialize)]
 pub struct FileSuccessResponse<T> {

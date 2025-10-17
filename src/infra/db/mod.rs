@@ -3,15 +3,22 @@ use std::env;
 use sqlx::mysql::MySqlPoolOptions;
 use sqlx::MySqlPool;
 
+use std::sync::{ Arc };
+
+#[derive(Debug, Clone)]
 pub struct AppState {
-    db: MySqlPool,
+    db: Arc<MySqlPool>,
 }
 
 impl AppState {
-    pub fn new(db: MySqlPool) -> Self {
+    pub fn new(db: Arc<MySqlPool>) -> Self {
         Self {
             db
         }
+    }
+
+    pub fn get_db(&self) -> &Arc<MySqlPool> {
+        &self.db
     }
 }
 
@@ -51,8 +58,8 @@ pub async fn setup_db() -> Result <MySqlPool, &'static str> {
     let pool_result = MySqlPoolOptions::new()
                         .max_connections(5)
                         .connect(db_url.as_str()).await;
-
-    let mut pool;
+    
+    let pool;
     match pool_result {
         Ok(p) => {
             pool = p;
