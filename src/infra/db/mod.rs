@@ -2,23 +2,30 @@ use std::env;
 
 use sqlx::mysql::MySqlPoolOptions;
 use sqlx::MySqlPool;
+use sonyflake::Sonyflake;
 
 use std::sync::{ Arc };
 
 #[derive(Debug, Clone)]
 pub struct AppState {
     db: Arc<MySqlPool>,
+    sf: Arc<Sonyflake>,
 }
 
 impl AppState {
-    pub fn new(db: Arc<MySqlPool>) -> Self {
+    pub fn new(db: Arc<MySqlPool>, sf: Arc<Sonyflake>) -> Self {
         Self {
-            db
+            db,
+            sf
         }
     }
 
     pub fn get_db(&self) -> &Arc<MySqlPool> {
         &self.db
+    }
+
+    pub fn get_sf(&self) -> &Arc<Sonyflake> {
+        &self.sf
     }
 }
 

@@ -3,9 +3,11 @@ mod handlers;
 mod infra;
 mod utils;
 mod domain;
+mod dto;
 
 use axum::{ Router, Extension };
 use infra::db;
+use sonyflake::Sonyflake;
 use std::sync::Arc;
 
 #[tokio::main]
@@ -24,7 +26,9 @@ async fn main() {
     }
 
     let db_mutex = Arc::new(db_pool.clone());
-    let app_state = db::AppState::new(db_mutex);
+    let sf = Arc::new(Sonyflake::new().unwrap());
+
+    let app_state = db::AppState::new(db_mutex, sf);
 
     let api_routes = routes::register_routes();
     let app_routes = Router::new()

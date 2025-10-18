@@ -4,34 +4,53 @@ use crate::utils:: {
 };
 
 use axum::{
-    extract::{ Query, Extension },
-    response::{IntoResponse, Json},
+    extract::{ Query, Extension, Multipart },
+    response::{ IntoResponse, Json },
 };
 
-use serde::Deserialize;
+use futures::future::join_all;
+use futures_util::TryStreamExt;
+use tokio::{
+    io::AsyncWriteExt,
+    fs,
+    sync::mpsc,
+};
 
 use crate::infra::{
     db::{ AppState },
     repositories::{ fm_repository },
 };
 
-#[derive(Debug, Deserialize)]
-pub struct GetQueryParams {
-    pub page: u64,
-    pub limit: u8,
-}
+use crate::dto:: {
+    GetQueryParams,
+    CreateFilePayload,
+};
+
+use std::{
+    sync::Arc,
+    env,
+    fs as sys_fs,
+    path::PathBuf,
+};
 
 pub async fn get_files(
     Query(params): Query<GetQueryParams>,
     Extension(state): Extension<AppState>
 ) -> Result<impl IntoResponse, impl IntoResponse> {
-    let page = params.page;
-    let limit = params.limit;
+    let page = match params.page {
+        Some(p) => p,
+        None => 0
+    };
 
-    if params.page <= 0 || params.limit <= 0 {
+    let limit = match params.limit {
+        Some(l) => l,
+        None => 0
+    };
+
+    if page <= 0 || limit <= 0 {
         let err_resp = ErrorResponse {
             status: "failed",
-            message: "invalid page or limit",
+            message: "invliad or missing pagination params: please provide valid page and limit value.",
         };
 
         return Err(Json(err_resp));
@@ -63,23 +82,94 @@ pub async fn get_files(
     
 }
 
-pub async fn create_files(Extension(state): Extension<AppState>) -> Result<impl IntoResponse, impl IntoResponse> {
-    let id = 43;
-    if id == 43 {
-        let success_resp = FileSuccessResponse {
-            status: "sucess",
-            data: "123",
+pub async fn upload_files(
+    Extension(state): Extension<AppState>,
+    mut multipart: Multipart,
+) -> Result<impl IntoResponse, impl IntoResponse> {
+    let home_path = env::var("HOME").unwrap_or("Nil".to_string());
+    if home_path == "Nil" {
+        let err_resp = ErrorResponse {
+            status: "failed",
+            message: "sorry something went wrong",
         };
 
-        return Ok(Json(success_resp));
+        return Err(Json(err_resp));
     }
-    
-    let err_resp = ErrorResponse {
-       status: "failed",
-       message: "Not found",
+
+    let mut failed = false;
+    let mut dir_path = PathBuf::from(home_path).join("fm_uploads");
+    let mut file_upload_handlers = vec![];
+    let sf = state.get_sf();
+
+    while let Some(field) = multipart.next_field().await.unwrap() {
+        let key = field.name().unwrap().to_string();
+        
+        match key.as_str() {
+            "user_id" => {
+                let user_id = field.text().await.unwrap();
+                if user_id.is_empty() {
+                    failed = true;
+                    break;
+                }
+
+                dir_path = dir_path.join(&user_id);
+                let _ = sys_fs::create_dir_all(&dir_path);
+            },
+
+            "file" => {
+                let file_name = field.file_name().unwrap().to_string();
+                let ftype = field.content_type().unwrap_or("octet-stream").to_string();
+                let mut file_streams = field.into_stream();
+                let file_path = dir_path.join(&file_name);
+
+                let sf_clone = Arc::clone(sf);
+                let (tx, mut rx) = mpsc::channel::<bytes::Bytes>(8);
+                let handler = tokio::spawn(async move {
+                    let mut file = fs::File::create(&file_path).await;
+                    match file {
+                        Ok(mut f) => {
+                            while let Some(chunk) = rx.recv().await {
+                                f.write_all(&chunk).await;
+                            }
+                        },
+                        Err(e) => {
+                            eprintln!("(ERROR):: file creation failed {:?}", e);
+                        }
+                    }
+                });
+
+                file_upload_handlers.push(handler);
+
+
+                while let Some(chunk) = file_streams.try_next().await.unwrap() {
+                    tx.send(chunk).await.unwrap();
+                }
+
+            },
+
+            _ => {
+                eprintln!("(WARNING):: Invalid field {key}");            
+            }
+        }
+    }
+
+    if failed {
+        let err_resp = ErrorResponse {
+            status: "failed",
+            message: "please provide the valid user_id",
+        };
+
+        return Err(Json(err_resp));
+    }
+
+    let file_upload_results = join_all(file_upload_handlers).await;
+
+    let ok_resp = FileSuccessResponse {
+        status: "success",
+        data: vec!["123"],
     };
 
-    Err(Json(err_resp))
+    Ok(Json(ok_resp))
 }
 
 pub async fn delete_files(Extension(state): Extension<AppState>) -> Result<impl IntoResponse, impl IntoResponse> {
