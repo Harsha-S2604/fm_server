@@ -8,3 +8,19 @@ pub struct File {
     pub f_type: String,
 }
 
+impl File {
+    pub fn new(id: u64, name: String, location: String, f_type: String) -> Self {
+        Self {
+            id,
+            name,
+            location,
+            f_type,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.name.is_empty() || self.location.is_empty() || self.f_type.is_empty()
+    }
+}
+
+

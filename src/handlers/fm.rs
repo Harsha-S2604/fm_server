@@ -23,7 +23,6 @@ use crate::infra::{
 
 use crate::dto:: {
     GetQueryParams,
-    CreateFilePayload,
 };
 
 use std::{
@@ -32,6 +31,8 @@ use std::{
     fs as sys_fs,
     path::PathBuf,
 };
+
+use crate::domain::file::File;
 
 pub async fn get_files(
     Query(params): Query<GetQueryParams>,
@@ -100,6 +101,7 @@ pub async fn upload_files(
     let mut dir_path = PathBuf::from(home_path).join("fm_uploads");
     let mut file_upload_handlers = vec![];
     let sf = state.get_sf();
+    let db = state.get_db();
 
     while let Some(field) = multipart.next_field().await.unwrap() {
         let key = field.name().unwrap().to_string();
@@ -121,8 +123,10 @@ pub async fn upload_files(
                 let ftype = field.content_type().unwrap_or("octet-stream").to_string();
                 let mut file_streams = field.into_stream();
                 let file_path = dir_path.join(&file_name);
-                
+
                 let sf_clone = Arc::clone(sf);
+                let db_clone = Arc::clone(db);
+
                 let (tx, mut rx) = mpsc::channel::<bytes::Bytes>(8);
                 let handler = tokio::spawn(async move {
                     let mut file = fs::File::create(&file_path).await;
@@ -134,10 +138,17 @@ pub async fn upload_files(
                                 match write_result {
                                     Err(e) => {
                                         eprintln!("(ERROR):: Failed to write");
+                                        break;
                                     },
                                     _ => {},
                                 } 
                             }
+
+                            let file_path_str = file_path.to_string_lossy().into_owned();
+                            let file_id = sf_clone.next_id().unwrap();
+                            let file = File::new(file_id, file_name, file_path_str, ftype);
+
+                            fm_repository::upload_file(file, &(*db_clone)).await;
                         },
                         Err(e) => {
                             eprintln!("(ERROR):: file creation failed {:?}", e);
@@ -147,8 +158,6 @@ pub async fn upload_files(
                 });
 
                 file_upload_handlers.push(handler);
-
-
                 while let Some(chunk) = file_streams.try_next().await.unwrap() {
                     tx.send(chunk).await.unwrap();
                 }
