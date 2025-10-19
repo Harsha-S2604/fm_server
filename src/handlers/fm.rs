@@ -120,6 +120,7 @@ pub async fn upload_files(
 
             "file" => {
                 let file_name = field.file_name().unwrap().to_string();
+                let fname = field.file_name().unwrap().to_string();
                 let ftype = field.content_type().unwrap_or("octet-stream").to_string();
                 let mut file_streams = field.into_stream();
                 let file_path = dir_path.join(&file_name);
@@ -138,7 +139,7 @@ pub async fn upload_files(
                                 match write_result {
                                     Err(e) => {
                                         eprintln!("(ERROR):: Failed to write {:?}", e);
-                                        break;
+                                        return Err(file_name);
                                     },
                                     _ => {},
                                 } 
@@ -146,20 +147,24 @@ pub async fn upload_files(
 
                             let file_path_str = file_path.to_string_lossy().into_owned();
                             let file_id = sf_clone.next_id().unwrap();
-                            let file = File::new(file_id, file_name, file_path_str, ftype);
+                            let file = File::new(file_id, fname, file_path_str, ftype);
 
                             let db_res = fm_repository::upload_file(file, &(*db_clone)).await;
                             if let Err(db_err) = db_res {
                                 // handle error here
                                 eprintln!("{:?}", db_err);
+                                return Err(file_name);
                             }
+
+                            Ok(file_name)
 
                         },
                         Err(e) => {
                             eprintln!("(ERROR):: file creation failed {:?}", e);
-                            failed = true;
+                            Err(file_name)
                         }
                     }
+                    
                 });
 
                 file_upload_handlers.push(handler);
@@ -185,10 +190,21 @@ pub async fn upload_files(
     }
 
     let file_upload_results = join_all(file_upload_handlers).await;
+    let mut failed_uploads = vec![];
+
+    for file_upload_result in file_upload_results {
+        if let Ok(inner_result) = file_upload_result {
+            if let Err(file_name) = inner_result {
+                failed_uploads.push(file_name);
+            }
+        } else if let Err(join_err) = file_upload_result {
+            eprintln!("(ERROR):: {:?}", join_err);
+        }
+    }
 
     let ok_resp = FileSuccessResponse {
         status: "success",
-        data: vec!["123"],
+        data: failed_uploads,
     };
 
     Ok(Json(ok_resp))
