@@ -29,8 +29,7 @@ pub async fn upload_files(
     db: &Arc<MySqlPool>
 ) -> Result<&'static str, &'static str> {
     if files.is_empty() {
-        eprintln!("(ERROR):: No users to insert");
-        return Err("EMPTY");
+        return Err("(DB_INSERT_ERROR):: files are empty to insert");
     }
 
     let mut values_clause = String::new();
@@ -55,12 +54,12 @@ pub async fn upload_files(
 
     let db_clone = Arc::clone(db);
     match query_builder.execute(&(*db_clone)).await {
-        Ok(result) => {
-            return Ok("SUCCESS"); 
+        Ok(_) => {
+            return Ok("DB_INSERT_SUCCESS"); 
         },
         Err(e) => {
-            eprintln!("failed to insert the file {:?}", e);
-            return Err("ERROR");
+            eprintln!("(DB_INSERT_ERROR):: {:?}", e);
+            return Err("DB_INSERT_ERROR");
         }
     }
 
@@ -71,7 +70,7 @@ pub async fn upload_file(
     db: &MySqlPool
 ) -> Result<&'static str, &'static str> {
     if file.is_empty() {
-        return Err("EMPTY");
+        return Err("EMPTY_DATA");
     }
     
     let result = sqlx::query!(
@@ -84,29 +83,12 @@ pub async fn upload_file(
         ).execute(db).await;
 
     match result {
-        Ok(r) => {
-            println!("Insert data succesful");
-            return Ok("SUCCESS");
+        Ok(_) => {
+            return Ok("DB_INSERT_SUCCESS");
         },
         Err(e) => {
-            eprintln!("(ERROR):: insert data failed");
-            return Err("FAILED");
+            eprintln!("(DB_INSERT_ERROR):: {:?}", e);
+            return Err("DB_INSERT_ERROR");
         }
     }
-}
-
-pub fn get_file() -> Result<File, String> {
-    Err(String::from("something went wrong"))
-}
-
-pub fn create_files() -> Result<String, String> {
-    Ok(String::from("File created"))
-}
-
-pub fn delete_files() -> Result<String, String> {
-    Ok(String::from("files deleted"))
-}
-
-pub fn update_files() -> Result<String, String> {
-    Ok(String::from("files updated"))
 }

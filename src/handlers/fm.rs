@@ -129,7 +129,7 @@ pub async fn upload_files(
 
                 let (tx, mut rx) = mpsc::channel::<bytes::Bytes>(8);
                 let handler = tokio::spawn(async move {
-                    let mut file = fs::File::create(&file_path).await;
+                    let file = fs::File::create(&file_path).await;
                     match file {
                         Ok(mut f) => {
                             while let Some(chunk) = rx.recv().await {
@@ -137,7 +137,7 @@ pub async fn upload_files(
 
                                 match write_result {
                                     Err(e) => {
-                                        eprintln!("(ERROR):: Failed to write");
+                                        eprintln!("(ERROR):: Failed to write {:?}", e);
                                         break;
                                     },
                                     _ => {},
@@ -148,7 +148,12 @@ pub async fn upload_files(
                             let file_id = sf_clone.next_id().unwrap();
                             let file = File::new(file_id, file_name, file_path_str, ftype);
 
-                            fm_repository::upload_file(file, &(*db_clone)).await;
+                            let db_res = fm_repository::upload_file(file, &(*db_clone)).await;
+                            if let Err(db_err) = db_res {
+                                // handle error here
+                                eprintln!("{:?}", db_err);
+                            }
+
                         },
                         Err(e) => {
                             eprintln!("(ERROR):: file creation failed {:?}", e);
