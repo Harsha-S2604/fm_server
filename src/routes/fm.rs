@@ -1,6 +1,7 @@
 use axum::{ 
     Router,
-    routing::{ get, post }
+    routing::{ get, post },
+    extract::{ DefaultBodyLimit },
 };
 
 use crate::handlers::fm::{ 
@@ -13,6 +14,7 @@ use crate::handlers::fm::{
 pub fn get_router() -> Router {
     let router = Router::new()
                     .route("/", get(get_files).delete(delete_files).put(update_files))
-                    .route("/upload", post(upload_files));
+                    .route("/upload", post(upload_files)
+                        .layer(DefaultBodyLimit::max(10 * 1024 * 1024 * 1024))); 
     router
 }

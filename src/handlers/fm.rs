@@ -121,7 +121,7 @@ pub async fn upload_files(
                 let ftype = field.content_type().unwrap_or("octet-stream").to_string();
                 let mut file_streams = field.into_stream();
                 let file_path = dir_path.join(&file_name);
-
+                
                 let sf_clone = Arc::clone(sf);
                 let (tx, mut rx) = mpsc::channel::<bytes::Bytes>(8);
                 let handler = tokio::spawn(async move {
@@ -129,11 +129,19 @@ pub async fn upload_files(
                     match file {
                         Ok(mut f) => {
                             while let Some(chunk) = rx.recv().await {
-                                f.write_all(&chunk).await;
+                                let write_result = f.write_all(&chunk).await;
+
+                                match write_result {
+                                    Err(e) => {
+                                        eprintln!("(ERROR):: Failed to write");
+                                    },
+                                    _ => {},
+                                } 
                             }
                         },
                         Err(e) => {
                             eprintln!("(ERROR):: file creation failed {:?}", e);
+                            failed = true;
                         }
                     }
                 });
@@ -152,7 +160,7 @@ pub async fn upload_files(
             }
         }
     }
-
+    
     if failed {
         let err_resp = ErrorResponse {
             status: "failed",
