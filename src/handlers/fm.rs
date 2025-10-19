@@ -135,6 +135,10 @@ pub async fn upload_files(
                         Ok(mut f) => {
                             while let Some(chunk) = rx.recv().await {
                                 let write_result = f.write_all(&chunk).await;
+                                if let Err(e) = write_result {
+                                    eprintln!("(ERROR):: Failed to write {:?}", e);
+                                    return Err(file_name);
+                                }
 
                                 match write_result {
                                     Err(e) => {
