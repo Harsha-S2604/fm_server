@@ -34,13 +34,16 @@ pub async fn upload_files(
 
     let mut values_clause = String::new();
     for i in 0..files.len() {
-        values_clause.push_str("(?, ?, ?, ?)");
+        values_clause.push_str("(?, ?, ?, ?, ?)");
         if i != files.len() - 1 {
             values_clause.push_str(", ");
         }
     }
 
-    let sql_query = format!("INSERT INTO files(id, name, location, f_type) VALUES {}", values_clause);
+    let sql_query = format!(
+        "INSERT INTO files(id, name, location, f_type, user_id) VALUES {}", 
+        values_clause
+    );
 
     let mut query_builder = query(&sql_query);
 
@@ -49,7 +52,8 @@ pub async fn upload_files(
                             .bind(file.id)
                             .bind(file.name)
                             .bind(file.location)
-                            .bind(file.f_type);
+                            .bind(file.f_type)
+                            .bind(file.user_id);
     }
 
     let db_clone = Arc::clone(db);
@@ -74,12 +78,13 @@ pub async fn upload_file(
     }
     
     let result = sqlx::query!(
-            "INSERT INTO files (id, name, location, f_type) 
-            VALUES(?, ?, ?, ?)",
+            "INSERT INTO files (id, name, location, f_type, user_id) 
+            VALUES(?, ?, ?, ?, ?)",
             file.id,
             file.name,
             file.location,
-            file.f_type
+            file.f_type,
+            file.user_id
         ).execute(db).await;
 
     match result {

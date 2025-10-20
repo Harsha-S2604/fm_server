@@ -1,8 +1,12 @@
+mod service;
+
 use crate::utils:: {
     ApiResponse,
     success::FileSuccessResponse,
     errors::ErrorResponse,
 };
+
+// use crate::handlers::fm::service;
 
 use axum::{
     extract::{ Query, Extension, Multipart },
@@ -106,19 +110,29 @@ pub async fn upload_files(
     let mut file_upload_handlers = vec![];
     let sf = state.get_sf();
     let db = state.get_db();
+    let mut user_id: u64 = 0;
 
     while let Some(field) = multipart.next_field().await.unwrap() {
         let key = field.name().unwrap().to_string();
-        
+
         match key.as_str() {
             "user_id" => {
-                let user_id = field.text().await.unwrap();
-                if user_id.is_empty() {
+                let user_id_str = field.text().await.unwrap();
+                if user_id_str.is_empty() {
                     failed = true;
                     break;
                 }
 
-                dir_path = dir_path.join(&user_id);
+                user_id = match user_id_str.parse() {
+                    Ok(uid) => uid,
+                    Err(e) => {
+                        eprintln!("(INVALID_DATA):: Failed to parse user_id");
+                        failed = true;
+                        break;
+                    }
+                };
+
+                dir_path = dir_path.join(&user_id_str);
                 let _ = sys_fs::create_dir_all(&dir_path);
             },
 
@@ -126,9 +140,11 @@ pub async fn upload_files(
                 let file_name = field.file_name().unwrap().to_string();
                 let fname = field.file_name().unwrap().to_string();
                 let ftype = field.content_type().unwrap_or("octet-stream").to_string();
-                let mut file_streams = field.into_stream();
                 let file_path = dir_path.join(&file_name);
-
+                if file_path.exists() {
+                    break;
+                }
+                let mut file_streams = field.into_stream();
                 let sf_clone = Arc::clone(sf);
                 let db_clone = Arc::clone(db);
 
@@ -147,7 +163,7 @@ pub async fn upload_files(
 
                             let file_path_str = file_path.to_string_lossy().into_owned();
                             let file_id = sf_clone.next_id().unwrap();
-                            let file = File::new(file_id, fname, file_path_str, ftype);
+                            let file = File::new(file_id, fname, file_path_str, ftype, user_id);
 
                             let db_res = fm_repository::upload_file(file, &(*db_clone)).await;
                             if let Err(db_err) = db_res {

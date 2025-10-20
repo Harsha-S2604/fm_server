@@ -1,4 +1,5 @@
 use serde::{ Serialize, Deserialize };
+use crate::domain::user::User;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct File {
@@ -6,15 +7,17 @@ pub struct File {
     pub name: String,
     pub location: String,
     pub f_type: String,
+    pub user_id: u64,
 }
 
 impl File {
-    pub fn new(id: u64, name: String, location: String, f_type: String) -> Self {
+    pub fn new(id: u64, name: String, location: String, f_type: String, user_id: u64) -> Self {
         Self {
             id,
             name,
             location,
             f_type,
+            user_id,
         }
     }
 
