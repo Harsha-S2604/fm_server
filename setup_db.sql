@@ -23,22 +23,8 @@ INSERT INTO users (id, email, password) VALUES
 		(1, 'abc@gmail.com', "0f4dd6c67bc8c827a2b181bc763f9ab96166d8f50840fe1ae0bbc0e77464da2c"),
 		(2, 'john@gmail.com', "d9ede7c2ece01b059ec3af2f8b47836a6feda626cf0a76e49c6c9be2b151456d");
 
-DELIMITER $$
-DROP PROCEDURE IF EXISTS insert_if_empty;
-CREATE PROCEDURE insert_if_empty()
-BEGIN
-	DECLARE row_count INT;
-	SELECT COUNT(*) INTO row_count FROM files;
-
-	IF row_count = 0 THEN	
-		INSERT INTO files (id, name, location, f_type, user_id) VALUES
+INSERT INTO files (id, name, location, f_type, user_id) VALUES
 		(1, 'file.txt', '/data/fm_files/file.txt', 'txt', 1),
 		(2, 'users.json', '/data/fm_files/users.json', 'json', 2);
-	END IF;
-END $$
-
-DELIMITER ;
-
-CALL insert_if_empty();
 
 SELECT * FROM files;
