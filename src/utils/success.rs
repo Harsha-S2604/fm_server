@@ -4,4 +4,5 @@ use serde::Serialize;
 pub struct FileSuccessResponse<T> {
     pub status: &'static str,
     pub data: T,
+    pub message: Option<&'static str>,
 }

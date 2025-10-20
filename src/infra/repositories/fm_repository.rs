@@ -92,3 +92,26 @@ pub async fn upload_file(
         }
     }
 }
+
+pub async fn delete_file(
+    file_id: u64,
+    db: &MySqlPool
+) -> Result<&'static str, &'static str> {
+    let result = sqlx::query("DELETE FROM files WHERE id = ?")
+                    .bind(file_id)
+                    .execute(db)
+                    .await;
+
+    if let Err(res_err) = result {
+        eprintln!("(DB_DELETE_ERROR):: {:?}", res_err);
+        return Err("Failed to delete the data");
+    }
+
+    if let Ok(res) = result {
+        if res.rows_affected() == 0 {
+            return Err("invalid id - file not found");
+        }
+    }
+
+    Ok("Deleted successfully")
+}

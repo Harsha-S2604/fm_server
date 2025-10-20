@@ -1,4 +1,5 @@
 use crate::utils:: {
+    ApiResponse,
     success::FileSuccessResponse,
     errors::ErrorResponse,
 };
@@ -23,6 +24,8 @@ use crate::infra::{
 
 use crate::dto:: {
     GetQueryParams,
+    DeletePayload,
+    FailedPayload,
 };
 
 use std::{
@@ -66,6 +69,7 @@ pub async fn get_files(
             let ok_resp = FileSuccessResponse {
                 status: "success",
                 data: files,
+                message: None,
             };
 
             Ok(Json(ok_resp))
@@ -139,14 +143,6 @@ pub async fn upload_files(
                                     eprintln!("(ERROR):: Failed to write {:?}", e);
                                     return Err(file_name);
                                 }
-
-                                match write_result {
-                                    Err(e) => {
-                                        eprintln!("(ERROR):: Failed to write {:?}", e);
-                                        return Err(file_name);
-                                    },
-                                    _ => {},
-                                } 
                             }
 
                             let file_path_str = file_path.to_string_lossy().into_owned();
@@ -209,28 +205,89 @@ pub async fn upload_files(
     let ok_resp = FileSuccessResponse {
         status: "success",
         data: failed_uploads,
+        message: None
     };
 
     Ok(Json(ok_resp))
 }
 
-pub async fn delete_files(Extension(state): Extension<AppState>) -> Result<impl IntoResponse, impl IntoResponse> {
-    let id = 43;
-    if id == 43 {
-        let success_resp = FileSuccessResponse {
-            status: "success",
-            data: "123",
-        };
-
-        return Ok(Json(success_resp));
-    }
-    
-    let err_resp = ErrorResponse {
-       status: "failed",
-       message: "Not found",
+pub async fn delete_files(
+    Extension(state): Extension<AppState>,
+    Json(payload): Json<DeletePayload>,
+) -> Result<impl IntoResponse, impl IntoResponse> {
+    let mut fut_handlers = vec![];
+    let db = state.get_db();
+    let file_ids = match payload.file_ids {
+        Some(f_ids) => f_ids,
+        None => vec![],
     };
 
-    Err(Json(err_resp))
+    for idx in 0..file_ids.len() {
+        let file_id = file_ids[idx];
+        let db_clone = Arc::clone(db);
+
+        let fut_handler = tokio::spawn(async move {
+            let delete_result = fm_repository::delete_file(file_id, &(*db_clone)).await;
+            if let Err(del_err) = delete_result {
+                let err_resp = ApiResponse {
+                    status: "failed",
+                    message: Some(del_err),
+                    data: Some(file_id),
+                };
+
+                return Err(err_resp);
+            }
+            
+
+            let ok_resp = ApiResponse {
+                status: "success",
+                message: None,
+                data: Some(file_id),
+            };
+
+            Ok(ok_resp)
+        });
+
+        fut_handlers.push(fut_handler);
+    }
+
+    let file_delete_results = join_all(fut_handlers).await;
+    let mut failed_files: Vec<FailedPayload> = vec![];
+
+    for file_del_res in file_delete_results {
+        if let Ok(inner_result) = file_del_res {
+            if let Err(resp) = inner_result {
+                let failed_res = FailedPayload::new(resp.data, resp.message);
+                failed_files.push(failed_res);
+            }
+        } else if let Err(join_err) = file_del_res {
+            eprintln!("(ERROR):: {:?}", join_err);
+            let err_resp = ErrorResponse {
+                status: "failed",
+                message: "sorry, something went wrong",
+            };
+
+            return Err(Json(err_resp));
+        }
+    }
+
+    if failed_files.len() > 0 {
+        let err_resp = FileSuccessResponse {
+            status: "failed",
+            data: failed_files,
+            message: Some("Some files are failed to upload"),
+        };
+
+        return Ok(Json(err_resp));
+    }
+
+    let ok_resp = FileSuccessResponse {
+        status: "success",
+        data: failed_files,
+        message: None,
+    };
+
+    Ok(Json(ok_resp))
 }
 
 pub async fn update_files(Extension(state): Extension<AppState>) ->  Result<impl IntoResponse, impl IntoResponse> {
@@ -239,6 +296,7 @@ pub async fn update_files(Extension(state): Extension<AppState>) ->  Result<impl
         let success_resp = FileSuccessResponse {
             status: "success",
             data: "123",
+            message: None,
         };
 
         return Ok(Json(success_resp));
