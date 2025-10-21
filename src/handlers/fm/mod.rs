@@ -42,16 +42,17 @@ use std::{
 use crate::domain::file::File;
 
 
-fn get_file_path(file_dir: &PathBuf, file_name: &String) -> PathBuf {
+fn get_file_path(file_dir: &PathBuf, file_name: &String) -> (PathBuf, String) {
     let mut copy_num = 1;
     let mut file_path = file_dir.join(file_name);
 
     let path = PathBuf::from(file_name);
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
     let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
+    let mut new_file_name = String::from(file_name);
 
     while file_path.exists() {
-        let new_file_name = if ext.is_empty() {
+        new_file_name = if ext.is_empty() {
             format!("{}({})", stem, copy_num)
         } else {
             format!("{}({}).{}", stem, copy_num, ext)
@@ -61,7 +62,8 @@ fn get_file_path(file_dir: &PathBuf, file_name: &String) -> PathBuf {
         copy_num += 1;
     }
 
-    file_path
+    (file_path, new_file_name)
+
 }
 
 pub async fn get_files(
@@ -161,9 +163,9 @@ pub async fn upload_files(
 
             "file" => {
                 let mut file_name = field.file_name().unwrap().to_string();
-                let fname = field.file_name().unwrap().to_string();
                 let ftype = field.content_type().unwrap_or("octet-stream").to_string();
-                let file_path = get_file_path(&dir_path, &file_name);
+                let (file_path, new_file_name) = get_file_path(&dir_path, &file_name);
+                let fname = new_file_name.to_string();
                 
                 let mut file_streams = field.into_stream();
                 let sf_clone = Arc::clone(sf);
