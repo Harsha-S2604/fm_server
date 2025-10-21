@@ -27,9 +27,8 @@ impl FailedPayload {
     }
 }
 
-#[derive(Debug, Serialize)]
-pub struct ApiResponse<T> {
-    pub status: &'static str,
-    pub message: Option<&'static str>,
-    pub data: Option<T>,
+#[derive(Debug, Deserialize)]
+pub struct DownloadData {
+    pub user_id: Option<u64>,
+    pub file_ids: Option<Vec<u64>>,
 }

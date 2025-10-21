@@ -24,6 +24,35 @@ pub async fn get_files(
 
 }
 
+
+pub async fn get_file(
+    file_id: u64, 
+    db: &MySqlPool
+) -> Result<File, &'static str> {
+    let file_result = sqlx::query_as!(
+        File,
+        r#"SELECT * FROM files WHERE id=?"#,
+        file_id
+    ).fetch_optional(db).await
+    .map_err(|e| {
+        eprintln!("(get_file QUERY_ERROR)::{:#?}", e);
+        "Database error"
+    });
+
+    match file_result {
+        Ok(file_ok) => {
+            match file_ok {
+                Some(file) => Ok(file),
+                None => Err("NOT_FOUND"),
+            }
+        }
+        Err(e) => {
+            eprintln!("(DB_ERROR):: {:?}", e);
+            Err("DB_ERROR")
+        },
+    }
+}
+
 pub async fn upload_files(
     files: Vec<File>,
     db: &Arc<MySqlPool>

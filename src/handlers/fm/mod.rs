@@ -2,6 +2,9 @@ mod service;
 
 use crate::utils:: {
     ApiResponse,
+    ApiData,
+    FileData,
+    TaskResponse,
     success::FileSuccessResponse,
     errors::ErrorResponse,
 };
@@ -9,10 +12,16 @@ use crate::utils:: {
 // use crate::handlers::fm::service;
 
 use axum::{
+    http::{header, StatusCode},
     extract::{ Query, Extension, Multipart },
     response::{ IntoResponse, Json },
 };
-
+use zip::{
+    write::SimpleFileOptions,
+    ZipWriter,
+    CompressionMethod::Stored,
+};
+use serde_json::json;
 use futures::future::join_all;
 use futures_util::TryStreamExt;
 use tokio::{
@@ -30,10 +39,12 @@ use crate::dto:: {
     GetQueryParams,
     DeletePayload,
     FailedPayload,
+    DownloadData,
 };
 
 use std::{
     sync::Arc,
+    io::{ Read, Write },
     env,
     fs as sys_fs,
     path::{ Path, PathBuf },
@@ -268,22 +279,12 @@ pub async fn delete_files(
         let fut_handler = tokio::spawn(async move {
             let delete_result = fm_repository::delete_file(file_id, &(*db_clone)).await;
             if let Err(del_err) = delete_result {
-                let err_resp = ApiResponse {
-                    status: "failed",
-                    message: Some(del_err),
-                    data: Some(file_id),
-                };
-
+                let err_resp = ApiResponse::new("failed", Some(del_err), Some(ApiData::Id(file_id)));
                 return Err(err_resp);
             }
             
 
-            let ok_resp = ApiResponse {
-                status: "success",
-                message: None,
-                data: Some(file_id),
-            };
-
+            let ok_resp = ApiResponse::new("success", None, Some(ApiData::Id(file_id)));
             Ok(ok_resp)
         });
 
@@ -296,7 +297,8 @@ pub async fn delete_files(
     for file_del_res in file_delete_results {
         if let Ok(inner_result) = file_del_res {
             if let Err(resp) = inner_result {
-                let failed_res = FailedPayload::new(resp.data, resp.message);
+                let data: Option<u64> = resp.data.and_then(ApiData::into_id);
+                let failed_res = FailedPayload::new(data, resp.message);
                 failed_files.push(failed_res);
             }
         } else if let Err(join_err) = file_del_res {
@@ -327,6 +329,124 @@ pub async fn delete_files(
     };
 
     Ok(Json(ok_resp))
+}
+
+pub async fn download_files(
+    Extension(state): Extension<AppState>,
+    Json(payload): Json<DownloadData>,
+) -> Result <impl IntoResponse, impl IntoResponse> {
+    let db = state.get_db();
+
+    let user_id = match payload.user_id {
+        Some(uid) => uid,
+        None => {
+            let api_resp = ApiResponse::error("invalid user_id");
+            return Err(Json(api_resp));
+        }
+    };
+
+    let file_ids = match payload.file_ids {
+        Some(f_ids) => f_ids,
+        None => {
+            let api_resp = ApiResponse::error("invalid file_ids");
+            return Err(Json(api_resp));
+        }
+    };
+
+    let mut buffer = Vec::new();
+    let mut download_handlers = vec![];
+    let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buffer));
+    let zip_opt = SimpleFileOptions::default().compression_method(Stored).unix_permissions(0o644);
+
+    for file_id in file_ids {
+        let db_clone = Arc::clone(db);
+        let download_handler = tokio::spawn(async move {
+            let file_result = fm_repository::get_file(file_id, &(*db_clone)).await;
+            let file_data = match file_result {
+                Ok(file) => file,
+                Err(file_err) => {
+                    let message = match file_err {
+                        "NOT_FOUND" => "file not found",
+                        "DB_ERROR" => "internal error",
+                        _ => "unknown error",
+                    };
+
+                    return TaskResponse::new("failed", Some(message), file_id, None);
+                }
+            };
+
+            let mut contents = Vec::new();
+            match sys_fs::File::open(&(file_data.location)) {
+                Ok(mut fp) => {
+                    match fp.read_to_end(&mut contents) {
+                        Err(e) => {
+                            eprintln!("failed to read the file {:?}", e);
+                            let message = Some("failed to read the file");
+                            return TaskResponse::new("failed", message, file_id, None);
+                        },
+                        _ => {}
+                    }
+                },
+                Err(e) => {
+                    eprintln!("(ERROR):: File not found");
+                    let message = Some("file not found");
+                    let task_result = TaskResponse::new("failed", message, file_id, None);
+                    return task_result;
+                }
+            }
+            
+            let data = Some(FileData {
+                contents,
+                file_name: file_data.name
+            });
+            let task_result = TaskResponse::new("success", None, file_id, data);
+            task_result
+        });
+
+        download_handlers.push(download_handler);
+    }
+
+    let download_results = join_all(download_handlers).await;
+
+    let mut results = vec![];
+    for download_result in download_results {
+        match download_result {
+            Ok(task_result) => {
+                if let Some(ref file_data) = task_result.file_data {
+                    let _ = zip.start_file(&file_data.file_name, zip_opt);
+                    let _ = zip.write_all(&file_data.contents);
+                }
+                
+                let status = task_result.status;
+                let data = Some(ApiData::Id(task_result.file_id));
+                let message = task_result.message;
+
+                let api_resp = ApiResponse::new(status, message, data);
+                results.push(api_resp);
+            },
+            Err(join_err) => {
+                eprintln!("task failed to join: {:?}", join_err);
+                let api_resp = ApiResponse::error("internal error");
+                return Err(Json(api_resp));
+            }
+        }
+    }
+
+    zip.finish().unwrap();
+
+    let zip_name = "fm_files.zip";
+    let data = ApiData::Object(json!(results));
+    let api_resp = ApiResponse::success(data, "");
+
+    let response = axum::response::Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, "application/zip")
+                    .header(header::CONTENT_DISPOSITION, 
+                        format!("attachment; filename=\"{}\"", zip_name),)
+                    .body(axum::body::Body::from(buffer))
+                        .unwrap();
+    
+    Ok(response)
 }
 
 pub async fn update_files(Extension(state): Extension<AppState>) ->  Result<impl IntoResponse, impl IntoResponse> {
